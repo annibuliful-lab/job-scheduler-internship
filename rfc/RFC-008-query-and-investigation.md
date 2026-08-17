@@ -245,6 +245,20 @@ projection lag 1.2s
 
 For critical operator actions, stale data must not be presented as guaranteed current truth.
 
+For live-capable views, responses should also expose an observation watermark/cursor that can be used by RFC-010 to subscribe to changes occurring after the returned snapshot without a silent blind gap.
+
+Example shape:
+
+```json
+{
+  "data": {},
+  "freshness": {},
+  "live": {
+    "watermark": 928318
+  }
+}
+```
+
 ## 11. PII-Safe Access
 
 Authorization should separate:
@@ -297,6 +311,8 @@ GET /schedules/{schedule_id}
 GET /pii/findings
 GET /alerts
 GET /monitoring/health
+GET /components
+GET /components/{component_instance_id}
 ```
 
 Exact paths are not normative.
@@ -324,3 +340,4 @@ rather than entire raw payloads.
 4. Which aggregate read models are required for the first release?
 5. Which operator commands, if any, should be added through a separately audited command boundary rather than this read context?
 6. What read-model freshness is acceptable?
+7. What exact snapshot/watermark mechanism should guarantee gap-free handoff to RFC-010 live subscriptions?

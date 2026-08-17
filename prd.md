@@ -5,8 +5,8 @@
 **Document Status:** Draft
 **Product Type:** Internal platform / developer tooling
 **Primary Focus:** Distributed job execution monitoring
-**Supporting Capabilities:** Redis-backed distributed job processing, scheduling visibility, PII detection, operator dashboard
-**Revision:** 1.2
+**Supporting Capabilities:** Redis-backed distributed job processing, scheduling visibility, PII detection, operator dashboard, real-time whole-platform observation
+**Revision:** 1.3
 
 ---
 
@@ -36,6 +36,9 @@ The system must answer questions such as:
 - Where was the PII detected?
 - What type of PII was found?
 - Can operators investigate a problem without exposing the sensitive data itself?
+- Can operators see important state and health changes as they happen without manually refreshing?
+- Is the monitoring platform itself healthy enough for live data to be trusted?
+- Which project component is degraded or offline right now?
 
 The product should provide a monitoring layer over the complete lifecycle:
 
@@ -67,7 +70,9 @@ Monitoring Platform
    ├── Queue Health
    ├── Scheduling Health
    ├── Alerts
-   └── PII Detection
+   ├── PII Detection
+   ├── Project Component Health
+   └── Real-Time Observation
 ```
 
 ---
@@ -110,13 +115,14 @@ Operators therefore need a system that reconstructs the complete lifecycle of ev
 
 Build a monitoring platform capable of reconstructing, observing, and analyzing distributed background-job execution using Redis.
 
-The platform must provide five primary capabilities:
+The platform must provide six primary capabilities:
 
 1. **Job lifecycle visibility**
 2. **Distributed worker and Redis queue monitoring**
 3. **Anomaly and failure detection**
 4. **PII detection throughout job execution**
 5. **Operator dashboard and investigation experience**
+6. **Real-time whole-platform observation**
 
 The product should allow an operator to move from:
 
@@ -264,6 +270,24 @@ Redis observation: STALE — last successful sample 2m ago
 
 The frontend must expose degraded monitoring when the evidence required to evaluate system health is delayed or unavailable.
 
+## 4.7 Real-Time Is a Delivery Property, Not a New Source of Truth
+
+The product should surface important operational changes shortly after they are observed, but the live connection must never replace durable monitoring history or authoritative read models.
+
+The expected model is:
+
+```text
+Durable monitoring facts / projections
+            │
+            ├── Query snapshots for correctness
+            │
+            └── Live changes for low-latency awareness
+```
+
+If a live stream disconnects, falls behind, or loses replay history, the dashboard must resynchronize from a current snapshot and visibly communicate the degraded period.
+
+The initial operational near-real-time target is that important monitoring changes become operator-visible within **5 seconds at p95 under normal load**, subject to validation and configuration for the deployment. This is not a hard real-time guarantee.
+
 ---
 
 # 5. Scope
@@ -339,6 +363,11 @@ Detection in:
 - monitoring-system health and data-freshness visibility
 - shareable deep links that preserve safe investigation context
 - consistent loading, empty, stale, partial, error, and forbidden states
+- live state/health updates without manual refresh
+- reconnect, bounded replay, and snapshot resynchronization
+- live connection/fallback status
+- project component health for API, scheduler, Redis delivery, workers, monitoring, PII, alerting, query, and real-time gateway components
+- sanitized real-time activity feed for meaningful operational changes
 
 ---
 
@@ -1792,6 +1821,62 @@ The initial dashboard is desktop-first. Primary investigation workflows should s
 
 Detailed frontend behavior is defined in RFC-009.
 
+## 43.2 Real-Time Whole-Platform Monitoring
+
+The dashboard must support operational near-real-time observation of the whole project.
+
+Live monitoring should cover:
+
+```text
+active job runs and retry chains
+worker/delivery attempts
+queue depth, oldest age, consumers, and health
+worker health and capacity
+schedule due/late/missed changes
+alerts opening/updating/resolving
+PII finding and scan-health summaries
+monitoring ingestion/projection health
+project component health
+live-stream connection and delivery health
+```
+
+The dashboard should expose an explicit live state such as:
+
+```text
+CONNECTING
+LIVE
+RECONNECTING
+RESYNCING
+DEGRADED
+POLLING_FALLBACK
+STALE
+PAUSED
+```
+
+A healthy browser connection must not be treated as proof that monitoring data is fresh. The UI must distinguish:
+
+```text
+transport freshness
+monitoring/projection freshness
+source observation freshness
+```
+
+Example:
+
+```text
+Live connection: LIVE
+Projection updated: 1s ago
+Redis queue sample: 47s ago — STALE
+```
+
+The initial live overview should include project component health for the platform's own runtime processes, such as API, scheduler, Redis delivery, workers, monitoring ingestor/projector, PII scanner, alert evaluator, query API, and real-time gateway.
+
+Real-time updates must be recoverable. After a temporary disconnect the client should resume from a bounded cursor when possible; if continuity cannot be guaranteed, the system must require a fresh snapshot/resynchronization rather than silently skipping changes.
+
+Live delivery is at-least-once. Clients must tolerate duplicate, late, and out-of-order updates. Durable monitoring history remains authoritative.
+
+Detailed real-time semantics are defined in RFC-010.
+
 ---
 
 # 44. Alert Framework
@@ -1950,6 +2035,24 @@ pii_scan_total
 pii_scan_errors_total
 ```
 
+### Real-time monitoring
+
+```text
+realtime_connections
+realtime_delivery_lag
+realtime_disconnect_total
+realtime_resync_required_total
+realtime_polling_fallback_total
+```
+
+### Project components
+
+```text
+component_instances
+component_heartbeat_age
+component_health
+```
+
 Labels must be designed carefully to avoid uncontrolled metric cardinality.
 
 `run_id` must not be used as a general metrics label.
@@ -2074,6 +2177,8 @@ Monitoring event delivery may use buffering or later reconciliation.
 
 The product should make monitoring gaps visible instead of silently pretending that complete data exists.
 
+The real-time channel is observational and must not become a job-execution dependency. If the live gateway or fanout transport is unavailable, the dashboard should fall back to bounded polling where possible and retain the last successful snapshot with a visible stale/degraded state.
+
 ---
 
 # 54. Clock Considerations
@@ -2177,6 +2282,10 @@ PII detectors
 PII actions
 retention
 alerting
+real-time replay retention
+live delivery latency thresholds
+component heartbeat thresholds
+polling fallback intervals
 ```
 
 ---
@@ -2196,6 +2305,8 @@ Alerts
 PII Findings
 Monitoring Rules
 PII Policies
+Project Components
+Real-Time Observation
 ```
 
 Illustrative resources:
@@ -2217,6 +2328,12 @@ GET /workers/{workerId}
 GET /alerts
 
 GET /pii/findings
+
+GET /monitoring/health
+GET /components
+GET /components/{componentInstanceId}
+
+GET /live  # streaming endpoint; exact transport/path defined by RFC-010
 ```
 
 These resource names are illustrative rather than mandatory implementation contracts.
@@ -2224,6 +2341,8 @@ These resource names are illustrative rather than mandatory implementation contr
 The dashboard frontend must consume supported query APIs rather than reading Redis or PostgreSQL directly. Backend APIs are responsible for authorization, PII-safe serialization, bounded filtering, pagination, aggregate calculations, and freshness metadata required by operator views.
 
 Dashboard-oriented APIs should support bounded aggregate and health queries without requiring the browser to download high-cardinality run/event datasets and aggregate them locally.
+
+Live-capable snapshot responses should expose an observation watermark/cursor that allows the dashboard to subscribe to subsequent changes without a silent handoff gap. Real-time subscriptions must be authenticated, authorization-aware, PII-safe, resumable within a bounded replay window, and able to force snapshot resynchronization when continuity cannot be guaranteed.
 
 ---
 
@@ -2499,6 +2618,11 @@ The initial product is considered functionally complete when an operator can:
 - see when dashboard data is stale, partial, or degraded instead of assuming it is current
 - preserve safe investigation filters and time range during drill-down and sharing
 - share a deep link that reproduces an authorized investigation without embedding sensitive values
+- observe important run, queue, worker, schedule, alert, PII-summary, and monitoring-health changes without manual refresh
+- see whether the dashboard is LIVE, reconnecting, resynchronizing, using polling fallback, or stale
+- recover safely after a temporary live connection interruption without silently losing state changes
+- inspect the health of the project's own runtime components
+- distinguish a healthy live transport from stale monitoring/source observations
 - use critical dashboard workflows without relying only on color
 
 ---
@@ -2541,6 +2665,8 @@ queue latency
 global time range and filters
 shareable investigation URLs
 freshness / partial-data states
+basic SSE live updates for active runs, workers, queues, and monitoring health
+live connection state and polling fallback
 ```
 
 Goal:
@@ -2620,6 +2746,11 @@ worker-health indicators
 cross-job analysis
 monitoring-system health dashboard
 saved investigation views where justified
+whole-project component health
+real-time activity feed
+live replay/resume and resynchronization hardening
+real-time backpressure/coalescing
+real-time monitoring SLOs
 ```
 
 Goal:
@@ -2659,6 +2790,8 @@ A useful boundary for the project is:
              │ Failure detection    │
              │ PII detection        │
              │ Alerts               │
+             │ Component health      │
+             │ Real-time observation │
              └──────────┬───────────┘
                         │
                         ▼

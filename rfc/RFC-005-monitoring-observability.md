@@ -4,7 +4,7 @@
 - **Context:** Monitoring & Observability
 - **Depends On:** RFC-000 through RFC-004
 - **Primary Product Focus:** Yes
-- **Consumers:** Alerting, Query & Investigation, PII Detection integrations
+- **Consumers:** Alerting, Query & Investigation, PII Detection integrations, Real-Time Monitoring
 
 ## 1. Summary
 
@@ -28,7 +28,9 @@ It provides durable history, timelines, health projections and anomaly evidence.
 - distinguish facts from derived health interpretations,
 - identify stuck/lost/delayed execution,
 - identify missing or contradictory signals,
-- provide trustworthy investigation data.
+- provide trustworthy investigation data,
+- expose project component health and monitoring-pipeline health,
+- publish safe projection-change signals for the real-time observation layer.
 
 ## 3. Non-Goals
 
@@ -141,6 +143,23 @@ Contains:
 - associated run IDs,
 - creation/start drift,
 - missed occurrence candidates.
+
+### Component Health Projection
+
+Contains safe health information for this project's runtime components:
+
+```text
+component_instance_id
+component_type
+version/build revision
+started_at
+last heartbeat
+derived health
+health evidence
+dependency summary
+```
+
+This is scoped to the job-monitoring project and is not a general infrastructure inventory.
 
 ## 8. Fact vs Interpretation
 
@@ -368,7 +387,30 @@ monitoring_event_failures_total
 
 Do not use `run_id` or `attempt_id` as general metric labels.
 
-## 20. Open Questions
+## 20. Real-Time Observation Integration
+
+Monitoring remains the owner of durable facts/projections. It may emit a safe projection-change/outbox record after a projection commit so RFC-010 can fan changes out to connected clients.
+
+The live path must not become authoritative. If live delivery is lost, clients resynchronize from current Query snapshots.
+
+Monitoring should expose a monotonic change position/watermark sufficient to prevent blind gaps between snapshot reads and live subscription.
+
+## 21. Monitoring the Monitoring and Live Pipelines
+
+In addition to ingestion/projection freshness, expose:
+
+```text
+project component heartbeat age
+component health
+live-change outbox backlog
+live publisher lag
+real-time gateway health
+real-time delivery lag
+```
+
+A healthy socket does not override stale source/projection evidence.
+
+## 22. Open Questions
 
 1. Event store vs ordinary relational event table?
 2. How should projection rebuild work?

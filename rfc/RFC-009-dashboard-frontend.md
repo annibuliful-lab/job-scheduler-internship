@@ -2,7 +2,7 @@
 
 - **Status:** Draft
 - **Area:** Operations Dashboard / Frontend Experience
-- **Depends On:** RFC-005, RFC-006, RFC-007, RFC-008
+- **Depends On:** RFC-005, RFC-006, RFC-007, RFC-008, RFC-010
 - **Primary Consumers:** Operators, developers, support engineers
 
 ## 1. Summary
@@ -70,7 +70,8 @@ The frontend must never:
 - present PII findings without unnecessary PII exposure,
 - remain usable during partial backend degradation,
 - provide consistent loading, empty, stale, partial, error, and permission-denied states,
-- support accessible operational visualization without relying only on color.
+- support accessible operational visualization without relying only on color,
+- support real-time whole-platform monitoring with explicit connection, replay, fallback, and resynchronization states.
 
 ## 4. Non-Goals
 
@@ -182,6 +183,7 @@ Schedules
 Alerts
 PII Findings
 Monitoring Health
+Components
 ```
 
 A user should not need to understand the backend bounded contexts to use the product.
@@ -296,6 +298,26 @@ known monitoring gaps
 ```
 
 Monitoring health must not be hidden at the bottom when the dashboard's data cannot be trusted.
+
+### 8.8 Project Components
+
+```text
+API
+scheduler
+Redis delivery
+workers
+monitoring ingestor/projector
+PII scanner
+alert evaluator
+query API
+real-time gateway
+```
+
+The overview should show healthy/degraded/offline component counts and allow drill-down to component evidence without becoming a generic infrastructure inventory.
+
+### 8.9 Live Activity
+
+A bounded sanitized activity feed may show meaningful changes such as run starts/completions, worker health changes, queue degradation, alert changes, and monitoring degradation. Heartbeat noise and raw logs should not be streamed directly.
 
 ## 9. Runs Experience
 
@@ -526,22 +548,60 @@ Filter behavior should be predictable:
 - changing filters does not silently expand the requested time range,
 - filter state should be encoded into the URL when safe.
 
-## 17. Refresh and Live Update Semantics
+## 17. Real-Time Update Semantics
 
-The frontend may use polling, server-sent events, WebSockets, or another transport. The transport is an implementation decision.
+RFC-010 defines the live observation contract. The dashboard should use a snapshot + stream model rather than treating an open connection as authoritative state.
 
-The user-facing semantics are normative:
+Baseline browser behavior:
 
 ```text
-manual refresh is always possible
-auto-refresh can be paused
-last successful refresh is visible when relevant
-failed refresh does not erase previously loaded data
-stale data is marked as stale
-new data should not unexpectedly destroy investigation position
+load current Query snapshot + live watermark
+        ↓
+connect SSE after watermark
+        ↓
+apply focused safe summaries / invalidate aggregate queries
+        ↓
+on disconnect: reconnect and replay
+        ↓
+if cursor expired: RESYNC_REQUIRED → fetch fresh snapshot
 ```
 
-For example, a live update should not move a selected run out from under an operator without indicating that the result set changed.
+The UI must expose live state such as:
+
+```text
+CONNECTING
+LIVE
+RECONNECTING
+RESYNCING
+POLLING_FALLBACK
+STALE
+PAUSED
+```
+
+Manual refresh remains available. Auto/live updates can be paused. Pausing live updates must make the loss of freshness obvious and should require reconciliation before returning to `LIVE`.
+
+User-facing semantics are normative:
+
+```text
+failed live refresh does not erase previously loaded data
+stale data is marked stale
+replay gaps are never silently skipped
+new updates do not unexpectedly destroy investigation position
+complex filtered lists are invalidated/refetched rather than reimplemented client-side
+focused active resources may receive compact summary updates
+```
+
+The dashboard must distinguish live transport health from monitoring/source freshness.
+
+Example:
+
+```text
+Live: connected
+Projection: 1s old
+Redis sample: 41s old — STALE
+```
+
+Polling is the fallback when streaming is unavailable. Exact fallback intervals are configurable and must respect backend capacity.
 
 ## 18. Frontend Data States
 
@@ -698,12 +758,16 @@ The dashboard frontend is acceptable for the initial release when an operator ca
 - share a safe deep link that reproduces an investigation view,
 - inspect PII findings without receiving unauthorized raw values,
 - understand empty, error, stale, partial, and forbidden states,
-- use critical workflows without relying on color alone.
+- use critical workflows without relying on color alone,
+- observe active run, queue, worker, schedule, alert, PII-summary, monitoring-health, and component changes without manual refresh,
+- understand whether live observation is connected, reconnecting, resynchronizing, in polling fallback, paused, or stale,
+- recover from a live-stream interruption without silently losing continuity,
+- distinguish a healthy live connection from stale source/projection data.
 
 ## 27. Open Questions
 
 1. What freshness target should the overview dashboard guarantee under normal operation?
-2. Should live updates use polling, SSE, WebSockets, or a hybrid approach?
+2. Which views should receive compact live summaries versus invalidation/refetch notifications under RFC-010?
 3. Which charts are necessary for the first release versus later operational-intelligence phases?
 4. Should named saved views be personal, shared, or both?
 5. Should dashboard layout customization be supported, or should the product keep a fixed operational layout initially?

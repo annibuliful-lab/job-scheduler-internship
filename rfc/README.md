@@ -63,6 +63,7 @@ The implementation architecture should be justified separately.
 | [RFC-007](RFC-007-alerting.md) | Alerting | Rules, incidents/alerts, severity and lifecycle |
 | [RFC-008](RFC-008-query-and-investigation.md) | Query & Investigation | Search, investigation APIs, access-safe read models and evidence composition |
 | [RFC-009](RFC-009-dashboard-frontend.md) | Dashboard Frontend | Operator navigation, visualization, drill-down, freshness and safe frontend behavior |
+| [RFC-010](RFC-010-real-time-monitoring.md) | Real-Time Monitoring | Low-latency whole-project observation, replay/resume, component health and live delivery semantics |
 
 ## Important Architectural Principles
 
@@ -77,6 +78,8 @@ The implementation architecture should be justified separately.
 8. **At-least-once delivery must be assumed.**
 9. **Events and commands must be idempotent where duplicate delivery is possible.**
 10. **Monitoring gaps must be visible rather than silently hidden.**
+11. **Real-time delivery is not a new source of truth.** Live updates use snapshot reconciliation and explicit resync when continuity is uncertain.
+12. **The project observes itself.** Component and monitoring-pipeline health are visible alongside job health.
 
 ## Suggested Reading Order
 
@@ -102,6 +105,10 @@ RFC-000
              ▼
          RFC-009
         Dashboard UI
+             │
+             ▼
+         RFC-010
+       Real-Time View
 ```
 
 ## RFC Status Convention

@@ -3,7 +3,7 @@
 - **Status:** Draft
 - **Context:** Platform-wide
 - **Decision Type:** Domain architecture
-- **Related RFCs:** RFC-001 through RFC-008
+- **Related RFCs:** RFC-001 through RFC-010
 
 ## 1. Summary
 
@@ -103,7 +103,9 @@ Owns:
 - queue health projections,
 - worker health projections,
 - anomaly evidence,
-- monitoring completeness/gaps.
+- monitoring completeness/gaps,
+- project component-health projections,
+- monitoring/live-pipeline freshness evidence.
 
 This is the central context of the product.
 
@@ -142,6 +144,29 @@ Owns read-oriented models and user-facing investigation semantics:
 
 It does not become the authoritative writer for upstream domains.
 
+### 3.9 Dashboard Frontend
+
+Owns:
+- operator navigation,
+- visualization,
+- live/polling presentation state,
+- investigation URL/filter state,
+- safe frontend interaction behavior.
+
+It does not own authoritative monitoring facts or derive backend health independently.
+
+### 3.10 Real-Time Monitoring
+
+Owns:
+- low-latency monitoring change delivery,
+- subscription semantics,
+- bounded replay/resume cursors,
+- stream backpressure/coalescing,
+- live connection health,
+- explicit resynchronization behavior.
+
+It does not own durable monitoring truth. Query snapshots and Monitoring projections remain authoritative.
+
 ## 4. Shared Language
 
 ### Job Definition
@@ -154,21 +179,24 @@ Example:
 generate_customer_report
 ```
 
+### Execution Chain
+
+Groups the initial run and policy-level retry runs originating from the same logical trigger.
+
 ### Run
 
-A logical execution request.
-
-A run survives retries.
+One policy-level execution. A policy retry creates a new `run_id` in the same `execution_chain_id` and links it through `parent_run_id`.
 
 ### Attempt
 
-One concrete execution attempt of a run.
+One worker/delivery execution ownership attempt within a run. Infrastructure reclaim may create another attempt without creating a policy retry.
 
 ```text
-run-123
-├── attempt-1 FAILED
-├── attempt-2 FAILED
-└── attempt-3 SUCCEEDED
+execution-chain-1
+├── run-123 FAILED
+│   └── attempt-1
+└── run-124 SUCCEEDED  parent=run-123
+    └── attempt-2
 ```
 
 ### Delivery
