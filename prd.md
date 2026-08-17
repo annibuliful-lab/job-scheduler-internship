@@ -1049,15 +1049,13 @@ The product should not automatically assume that every duplicate delivery repres
 A running job must be considered potentially stuck when:
 
 ```text
-current_time - last_execution_heartbeat
-    > configured threshold
+current_time - last_execution_heartbeat > configured threshold
 ```
 
 or when:
 
 ```text
-execution duration
-    > expected maximum duration
+execution duration > expected maximum duration
 ```
 
 Example:
@@ -1581,7 +1579,7 @@ The default job list should include:
 | Job      | Job type                    |
 | Queue    | Queue used                  |
 | Status   | Current execution state     |
-| Health   | Derived monitoring health    |
+| Health   | Derived monitoring health   |
 | Worker   | Current/latest worker       |
 | Attempts | Number of attempts          |
 | Created  | Creation time               |
