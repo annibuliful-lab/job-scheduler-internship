@@ -188,6 +188,9 @@ WORKER
 SCHEDULE
 ALERT
 PII_FINDING_SUMMARY
+PII_POLICY_ACTIVATED
+PII_POLICY_RELOAD_FAILED
+PII_POLICY_DRIFT_DETECTED
 MONITORING_HEALTH
 COMPONENT
 ```
@@ -552,7 +555,7 @@ Queue depth / oldest age / consumers
 Workers online/degraded/offline
 Schedules due/late/missed
 Open alerts
-PII finding/scan health
+PII finding/scan/policy health
 Monitoring ingestion lag
 Projection lag
 Live-stream lag

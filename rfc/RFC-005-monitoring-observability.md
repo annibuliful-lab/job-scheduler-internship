@@ -366,6 +366,8 @@ Different data classes may require different retention:
 
 Retention must be configurable and documented.
 
+Monitoring must also project PII policy-engine health, including active authoritative policy version, scanner-observed policy versions, reload/compile failures, and configuration drift. These are current operational health signals rather than retention classes.
+
 ## 19. Metrics
 
 Examples:

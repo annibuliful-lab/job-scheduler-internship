@@ -486,12 +486,19 @@ policy action
 run
 attempt
 detector/version
+policy name/version
+rule ID
+mask strategy when applicable
 time
 ```
 
 Raw PII must not be returned to the frontend merely so the frontend can hide it.
 
 Permission-denied fields should be omitted or explicitly represented as unavailable according to the API contract.
+
+The PII area should also expose the active policy name/version/checksum, revision history, detector inventory, safe rule summaries, policy validation failures, and scanner instances whose active version differs from the authoritative policy.
+
+If policy editing is added, read-only investigation and policy mutation permissions must remain separate. Candidate policy JSON must be validated before an activation action is enabled.
 
 ## 15. Monitoring Health Experience
 
@@ -505,6 +512,9 @@ projection lag
 queue observation age
 alert evaluation lag
 PII scan lag / scanner health
+active PII policy version
+PII policy reload/compile health
+scanner policy-version drift
 known gaps
 last successful observation per subsystem
 ```

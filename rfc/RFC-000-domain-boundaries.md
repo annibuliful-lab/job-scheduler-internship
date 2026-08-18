@@ -109,14 +109,17 @@ Owns:
 
 This is the central context of the product.
 
-### 3.6 PII Detection
+### 3.6 PII Policy Engine
 
 Owns:
-- PII detectors,
-- detection policies,
+- versioned JSON PII policies,
+- detector definitions and custom safe patterns,
+- policy validation/compilation and active revision,
 - classification,
+- deterministic rule evaluation,
 - findings,
-- masking/redaction decisions,
+- masking/redaction/block/ignore decisions,
+- policy-version evidence and scanner configuration drift,
 - scan status.
 
 It does not own the job's execution state unless a policy explicitly instructs the execution context to block processing.
@@ -130,7 +133,7 @@ Owns:
 - acknowledgement,
 - resolution.
 
-Alerting consumes facts/derived signals from Monitoring and PII Detection.
+Alerting consumes facts/derived signals from Monitoring and the PII Policy Engine.
 
 ### 3.8 Query & Investigation
 
@@ -277,6 +280,9 @@ schedule.occurrence_due
 
 pii.scan_completed
 pii.detected
+pii.policy_activated
+pii.policy_reload_failed
+pii.policy_drift_detected
 
 alert.opened
 alert.resolved

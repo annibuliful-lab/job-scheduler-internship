@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This RFC set defines the domain boundaries for a monitoring-first distributed job scheduling platform using Redis as the runtime delivery/coordination substrate and PII detection as a first-class monitoring capability.
+This RFC set defines the domain boundaries for a monitoring-first distributed job scheduling platform using Redis as the runtime delivery/coordination substrate and a policy-driven PII engine as a first-class monitoring capability.
 
 The documents intentionally define **domain ownership, contracts, invariants, and failure semantics** without forcing a one-domain-per-service architecture.
 
@@ -44,7 +44,7 @@ The implementation architecture should be justified separately.
                     └──────┬───────┬─────┘
                            │       │
                     ┌──────▼───┐   ▼
-                    │ Alerting │  PII Detection
+                    │ Alerting │  PII Policy Engine
                     │ Context  │  Context
                     └──────────┘
 ```
@@ -59,7 +59,7 @@ The implementation architecture should be justified separately.
 | [RFC-003](RFC-003-redis-delivery.md) | Redis Delivery | Dispatch, claiming, acknowledgement and recovery semantics |
 | [RFC-004](RFC-004-worker-runtime.md) | Worker Runtime | Worker identity, capacity, heartbeats and execution protocol |
 | [RFC-005](RFC-005-monitoring-observability.md) | Monitoring & Observability | Durable lifecycle events, projections, timelines and health interpretation |
-| [RFC-006](RFC-006-pii-detection.md) | PII Detection | Detection, classification, masking/redaction and findings |
+| [RFC-006](RFC-006-pii-detection.md) | PII Policy Engine | Versioned JSON policy, custom patterns, classification, masking/redaction/blocking and findings |
 | [RFC-007](RFC-007-alerting.md) | Alerting | Rules, incidents/alerts, severity and lifecycle |
 | [RFC-008](RFC-008-query-and-investigation.md) | Query & Investigation | Search, investigation APIs, access-safe read models and evidence composition |
 | [RFC-009](RFC-009-dashboard-frontend.md) | Dashboard Frontend | Operator navigation, visualization, drill-down, freshness and safe frontend behavior |
@@ -73,7 +73,7 @@ The implementation architecture should be justified separately.
    - Example: a run can be `RUNNING` while also having `SLA_VIOLATED`.
 4. **A policy retry creates a new `run_id` in the same `execution_chain_id`, linked through `parent_run_id`; worker/delivery recovery may create a new `attempt_id` within one run.**
 5. **A missing worker does not automatically mean a failed job.**
-6. **PII findings must not require storage of raw PII values.**
+6. **PII behavior is controlled by validated, versioned JSON policy; findings must not require storage of raw PII values.**
 7. **Cross-context communication should use stable contracts, not direct access to another context's internal tables.**
 8. **At-least-once delivery must be assumed.**
 9. **Events and commands must be idempotent where duplicate delivery is possible.**

@@ -341,3 +341,20 @@ rather than entire raw payloads.
 5. Which operator commands, if any, should be added through a separately audited command boundary rather than this read context?
 6. What read-model freshness is acceptable?
 7. What exact snapshot/watermark mechanism should guarantee gap-free handoff to RFC-010 live subscriptions?
+
+
+## PII Policy Investigation Extension
+
+PII finding read models should expose safe reproducibility metadata:
+
+```text
+policy_name
+policy_version
+policy_checksum
+rule_id
+detector_id
+detector_version
+mask_strategy?
+```
+
+Query surfaces should support filtering findings by policy version, rule ID, detector ID and action without exposing raw matched values.

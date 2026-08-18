@@ -1,0 +1,125 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/schemas/pii-policy.schema.json",
+  "title": "PIIPolicy",
+  "type": "object",
+  "required": ["apiVersion", "kind", "metadata", "spec"],
+  "additionalProperties": false,
+  "properties": {
+    "apiVersion": {"const": "monitoring.job/v1alpha1"},
+    "kind": {"const": "PIIPolicy"},
+    "metadata": {
+      "type": "object",
+      "required": ["name", "version"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {"type": "string", "minLength": 1, "maxLength": 128},
+        "version": {"type": "integer", "minimum": 1},
+        "description": {"type": "string", "maxLength": 1024}
+      }
+    },
+    "spec": {
+      "type": "object",
+      "required": ["evaluationMode", "defaults", "detectors", "rules"],
+      "additionalProperties": false,
+      "properties": {
+        "evaluationMode": {"enum": ["FIRST_MATCH"]},
+        "defaults": {
+          "type": "object",
+          "required": ["action", "onScanError"],
+          "additionalProperties": false,
+          "properties": {
+            "action": {"enum": ["OBSERVE", "MASK", "REDACT", "BLOCK", "IGNORE"]},
+            "onScanError": {"enum": ["FAIL_OPEN", "FAIL_CLOSED"]}
+          }
+        },
+        "fingerprint": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {"type": "boolean"},
+            "keyRef": {"type": "string", "minLength": 1, "maxLength": 256}
+          }
+        },
+        "detectors": {
+          "type": "array",
+          "maxItems": 256,
+          "items": {"$ref": "#/$defs/detector"}
+        },
+        "rules": {
+          "type": "array",
+          "maxItems": 1024,
+          "items": {"$ref": "#/$defs/rule"}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "detector": {
+      "type": "object",
+      "required": ["id", "type", "piiType", "enabled"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$", "maxLength": 128},
+        "type": {"enum": ["BUILTIN", "REGEX", "FIELD_NAME", "COMPOSITE"]},
+        "builtin": {"type": "string", "maxLength": 128},
+        "piiType": {"type": "string", "minLength": 1, "maxLength": 128},
+        "enabled": {"type": "boolean"},
+        "pattern": {"type": "string", "maxLength": 4096},
+        "minimumConfidence": {"type": "number", "minimum": 0, "maximum": 1},
+        "normalization": {"type": "object"},
+        "validation": {"type": "object"}
+      },
+      "additionalProperties": true
+    },
+    "match": {
+      "type": "object",
+      "properties": {
+        "sources": {"type": "array", "items": {"type": "string"}},
+        "jobTypes": {"type": "array", "items": {"type": "string"}},
+        "queues": {"type": "array", "items": {"type": "string"}},
+        "fieldPaths": {"type": "array", "items": {"type": "string"}},
+        "piiTypes": {"type": "array", "items": {"type": "string"}},
+        "detectorIds": {"type": "array", "items": {"type": "string"}},
+        "minimumConfidence": {"type": "number", "minimum": 0, "maximum": 1}
+      },
+      "additionalProperties": false
+    },
+    "mask": {
+      "type": "object",
+      "required": ["strategy"],
+      "properties": {
+        "strategy": {"enum": ["FULL", "KEEP_PREFIX", "KEEP_SUFFIX", "KEEP_PREFIX_SUFFIX", "PRESERVE_FORMAT", "EMAIL", "FIXED"]},
+        "visibleCharacters": {"type": "integer", "minimum": 0, "maximum": 256},
+        "visiblePrefix": {"type": "integer", "minimum": 0, "maximum": 256},
+        "visibleSuffix": {"type": "integer", "minimum": 0, "maximum": 256},
+        "localVisiblePrefix": {"type": "integer", "minimum": 0, "maximum": 256},
+        "domainMode": {"enum": ["PRESERVE", "MASK"]},
+        "maskCharacter": {"type": "string", "minLength": 1, "maxLength": 4},
+        "replacement": {"type": "string", "maxLength": 256}
+      },
+      "additionalProperties": false
+    },
+    "action": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {"enum": ["OBSERVE", "MASK", "REDACT", "BLOCK", "IGNORE"]},
+        "mask": {"$ref": "#/$defs/mask"},
+        "replacement": {"type": "string", "maxLength": 256},
+        "reasonCode": {"type": "string", "maxLength": 128}
+      },
+      "additionalProperties": false
+    },
+    "rule": {
+      "type": "object",
+      "required": ["id", "priority", "match", "action"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$", "maxLength": 128},
+        "priority": {"type": "integer", "minimum": -1000000, "maximum": 1000000},
+        "match": {"$ref": "#/$defs/match"},
+        "action": {"$ref": "#/$defs/action"}
+      }
+    }
+  }
+}

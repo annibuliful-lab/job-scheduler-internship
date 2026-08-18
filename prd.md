@@ -1,12 +1,12 @@
 # Product Requirements
 
-## Distributed Job Scheduling Monitoring with Redis and PII Detection
+## Distributed Job Scheduling Monitoring with Redis and PII Policy Engine
 
 **Document Status:** Draft
 **Product Type:** Internal platform / developer tooling
 **Primary Focus:** Distributed job execution monitoring
-**Supporting Capabilities:** Redis-backed distributed job processing, scheduling visibility, PII detection, operator dashboard, real-time whole-platform observation
-**Revision:** 1.3
+**Supporting Capabilities:** Redis-backed distributed job processing, scheduling visibility, policy-driven PII detection/transformation, operator dashboard, real-time whole-platform observation
+**Revision:** 1.4
 
 ---
 
@@ -70,7 +70,7 @@ Monitoring Platform
    ├── Queue Health
    ├── Scheduling Health
    ├── Alerts
-   ├── PII Detection
+   ├── PII Policy Engine
    ├── Project Component Health
    └── Real-Time Observation
 ```
@@ -120,7 +120,7 @@ The platform must provide six primary capabilities:
 1. **Job lifecycle visibility**
 2. **Distributed worker and Redis queue monitoring**
 3. **Anomaly and failure detection**
-4. **PII detection throughout job execution**
+4. **Policy-driven PII detection and transformation throughout job execution**
 5. **Operator dashboard and investigation experience**
 6. **Real-time whole-platform observation**
 
@@ -1078,13 +1078,15 @@ The product should not automatically assume that every duplicate delivery repres
 A running job must be considered potentially stuck when:
 
 ```text
-current_time - last_execution_heartbeat > configured threshold
+current_time - last_execution_heartbeat
+    > configured threshold
 ```
 
 or when:
 
 ```text
-execution duration > expected maximum duration
+execution duration
+    > expected maximum duration
 ```
 
 Example:
@@ -1264,11 +1266,23 @@ where relevant.
 
 ---
 
-# 29. PII Detection Objective
+# 29. PII Policy Engine Objective
 
 The system must identify sensitive information entering or leaving background jobs without unnecessarily exposing that information to operators.
 
-PII detection should behave as a monitoring capability.
+PII behavior must be driven by a versioned declarative JSON policy so that normal detector patterns, masking rules, redaction rules, source scopes, and enforcement behavior can change without application code deployment.
+
+The engine must separate:
+
+```text
+Detection
+  What appears to be PII?
+
+Policy Evaluation
+  What should happen to that finding in this source/job/field?
+```
+
+PII detection should remain a monitoring capability unless an explicit policy chooses an enforcement action such as `BLOCK`.
 
 Example:
 
@@ -1346,9 +1360,9 @@ Support should not require the system to treat all numeric values as PII.
 
 ---
 
-# 32. PII Detection Methods
+# 32. PII Detection Methods and Configurable Detectors
 
-The PII framework should allow multiple detection strategies.
+The PII engine must allow detector definitions to be configured declaratively.
 
 Possible strategies include:
 
@@ -1371,6 +1385,20 @@ should not necessarily be enough to classify something as a national identificat
 
 Validation and contextual information should reduce false positives.
 
+Custom pattern detectors must support JSON configuration, for example:
+
+```json
+{
+  "id": "thai-phone-custom",
+  "type": "REGEX",
+  "piiType": "PHONE_NUMBER",
+  "pattern": "(?:\\+66|0)[689]\\d{8}",
+  "minimumConfidence": 0.85
+}
+```
+
+Custom regular expressions must use a bounded-time/safe regex implementation rather than arbitrary backtracking expressions. Invalid patterns must be rejected before policy activation.
+
 ---
 
 # 33. PII Finding Model
@@ -1386,6 +1414,11 @@ A PII finding should contain information similar to:
   "fieldPath": "customer.identity",
   "piiType": "NATIONAL_ID",
   "confidence": 0.98,
+  "detectorId": "builtin-thai-national-id",
+  "detectorVersion": "3",
+  "policyName": "default",
+  "policyVersion": 7,
+  "ruleId": "redact-national-id-from-output",
   "action": "REDACT",
   "detectedAt": "..."
 }
@@ -1397,13 +1430,14 @@ The raw detected value should not be included by default.
 
 # 34. PII Actions
 
-Detection policies may define:
+PII policies may define:
 
 ```text
 OBSERVE
 MASK
 REDACT
 BLOCK
+IGNORE
 ```
 
 ### OBSERVE
@@ -1412,12 +1446,35 @@ Record that PII exists but do not modify execution.
 
 ### MASK
 
-Display a masked representation.
-
-Example:
+Transform the matched value using a configured masking strategy. The engine should support strategies such as:
 
 ```text
-som***@example.com
+FULL
+KEEP_PREFIX
+KEEP_SUFFIX
+KEEP_PREFIX_SUFFIX
+PRESERVE_FORMAT
+EMAIL
+FIXED
+```
+
+Example JSON:
+
+```json
+{
+  "type": "MASK",
+  "mask": {
+    "strategy": "KEEP_SUFFIX",
+    "visibleCharacters": 4,
+    "maskCharacter": "*"
+  }
+}
+```
+
+Example result:
+
+```text
+1234567890123 -> *********0123
 ```
 
 ### REDACT
@@ -1433,6 +1490,55 @@ Remove the value from monitoring-visible content.
 Prevent the job from proceeding.
 
 Blocking must be an explicit policy decision and must not be the default behavior of the monitoring platform.
+
+### IGNORE
+
+Suppress a known-safe or intentionally accepted match without disabling the detector globally. The matched value must still not be leaked into general logs merely because the policy chose `IGNORE`.
+
+---
+
+# 34.1 PII JSON Policy Configuration
+
+The product must support versioned JSON policy documents containing:
+
+```text
+metadata
+  name
+  version
+
+spec.defaults
+  action
+  onScanError
+
+spec.detectors[]
+  built-in/custom detector definitions
+  PII type
+  pattern/validator/normalization
+
+spec.rules[]
+  priority
+  match conditions
+  action
+  masking/redaction configuration
+```
+
+Rules should be scopeable by:
+
+```text
+source
+job type
+queue
+field path
+PII type
+detector ID
+minimum confidence
+```
+
+Policy evaluation must be deterministic. The initial model should use explicit rule priorities with `FIRST_MATCH` semantics.
+
+Activated policy revisions must be immutable and every finding must reference the effective policy version and rule that produced its action.
+
+The system must support policy validation before activation, atomic runtime reload, and rollback to a previous valid revision.
 
 ---
 
@@ -1454,6 +1560,8 @@ NOT_SCANNED
 SCANNING
 CLEAN
 DETECTED
+TRANSFORMED
+BLOCKED
 SCAN_ERROR
 ```
 
@@ -1496,6 +1604,8 @@ Action: MASK
 Type: NATIONAL_ID
 Location: result.customer.identity
 Action: REDACT
+Policy: default v7
+Rule: redact-national-id-from-output
 ```
 
 ---
@@ -1531,7 +1641,7 @@ The monitoring product should encourage structured logs rather than attempting t
 
 # 38. PII-Safe Logging
 
-Before job logs are persisted into the monitoring platform, configured PII detection/redaction should be applied.
+Before job logs are persisted into the monitoring platform, the active PII policy engine should apply configured detection and transformation rules.
 
 Example:
 
@@ -1608,7 +1718,7 @@ The default job list should include:
 | Job      | Job type                    |
 | Queue    | Queue used                  |
 | Status   | Current execution state     |
-| Health   | Derived monitoring health   |
+| Health   | Derived monitoring health    |
 | Worker   | Current/latest worker       |
 | Attempts | Number of attempts          |
 | Created  | Creation time               |
@@ -2214,6 +2324,8 @@ view PII findings
 view masked content
 manage monitoring rules
 manage PII policies
+validate PII policies
+activate/rollback PII policy revisions
 ```
 
 Raw sensitive values should require stronger authorization if raw-value storage is enabled at all.
@@ -2278,8 +2390,11 @@ timeouts
 stuck thresholds
 schedule delay thresholds
 worker heartbeat thresholds
-PII detectors
-PII actions
+PII policy revisions
+PII detector definitions/patterns
+PII rule priorities/scopes
+PII masking/redaction actions
+PII scan-error behavior
 retention
 alerting
 real-time replay retention
@@ -2305,6 +2420,7 @@ Alerts
 PII Findings
 Monitoring Rules
 PII Policies
+PII Policy Validation / Activation
 Project Components
 Real-Time Observation
 ```
@@ -2611,6 +2727,11 @@ The initial product is considered functionally complete when an operator can:
 - identify PII findings without exposing raw values
 - distinguish PII scan failures from business-job failures
 - trace a PII finding back to the corresponding job and field
+- define custom PII patterns and masking/redaction behavior through versioned JSON policy
+- validate a candidate PII policy before activation
+- identify the policy version, detector and rule responsible for every finding
+- activate or roll back a PII policy revision without partially applying configuration
+- detect scanner instances that are running an outdated policy revision
 - correlate jobs with distributed traces where tracing is available
 - determine from the overview dashboard whether job execution and the monitoring pipeline appear healthy
 - drill from an unhealthy queue, worker, schedule, alert, or PII aggregate to affected runs and evidence
@@ -2722,9 +2843,15 @@ result scanning
 error scanning
 log scanning
 PII findings
-masking
-redaction
-configurable policies
+JSON policy schema
+built-in and custom regex detectors
+field-path/source/job-type scoped rules
+masking strategies
+redaction / block / ignore actions
+policy validation + test mode
+versioned immutable policy revisions
+atomic activation + rollback
+policy-version drift monitoring
 ```
 
 Goal:

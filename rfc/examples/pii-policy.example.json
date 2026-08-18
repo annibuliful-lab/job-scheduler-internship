@@ -1,0 +1,134 @@
+{
+  "apiVersion": "monitoring.job/v1alpha1",
+  "kind": "PIIPolicy",
+  "metadata": {
+    "name": "default",
+    "version": 7,
+    "description": "Default PII detection and transformation policy"
+  },
+  "spec": {
+    "evaluationMode": "FIRST_MATCH",
+    "defaults": {
+      "action": "OBSERVE",
+      "onScanError": "FAIL_OPEN"
+    },
+    "fingerprint": {
+      "enabled": true,
+      "keyRef": "pii-fingerprint/current"
+    },
+    "detectors": [
+      {
+        "id": "builtin-email",
+        "type": "BUILTIN",
+        "builtin": "EMAIL_ADDRESS",
+        "piiType": "EMAIL_ADDRESS",
+        "enabled": true
+      },
+      {
+        "id": "thai-phone-custom",
+        "type": "REGEX",
+        "piiType": "PHONE_NUMBER",
+        "enabled": true,
+        "pattern": "(?:\\+66|0)[689]\\d{8}",
+        "minimumConfidence": 0.85,
+        "normalization": {
+          "unicode": "NFKC",
+          "removeSpaces": true
+        }
+      },
+      {
+        "id": "builtin-thai-national-id",
+        "type": "BUILTIN",
+        "builtin": "THAI_NATIONAL_ID",
+        "piiType": "NATIONAL_ID",
+        "enabled": true,
+        "validation": {
+          "checksum": true
+        }
+      }
+    ],
+    "rules": [
+      {
+        "id": "ignore-test-fixtures",
+        "priority": 1000,
+        "match": {
+          "jobTypes": ["pii-test-fixture"],
+          "fieldPaths": ["$.expected.*"]
+        },
+        "action": {
+          "type": "IGNORE"
+        }
+      },
+      {
+        "id": "block-national-id-before-redis",
+        "priority": 950,
+        "match": {
+          "sources": ["JOB_PAYLOAD"],
+          "jobTypes": ["public-export"],
+          "piiTypes": ["NATIONAL_ID"],
+          "minimumConfidence": 0.95
+        },
+        "action": {
+          "type": "BLOCK",
+          "reasonCode": "PII_NOT_ALLOWED_IN_EXPORT_PAYLOAD"
+        }
+      },
+      {
+        "id": "redact-national-id-from-output",
+        "priority": 900,
+        "match": {
+          "sources": ["JOB_RESULT", "ERROR_MESSAGE", "STRUCTURED_LOG"],
+          "piiTypes": ["NATIONAL_ID"]
+        },
+        "action": {
+          "type": "REDACT",
+          "replacement": "[NATIONAL_ID_REDACTED]"
+        }
+      },
+      {
+        "id": "mask-phone-payload",
+        "priority": 800,
+        "match": {
+          "sources": ["JOB_PAYLOAD", "JOB_METADATA"],
+          "piiTypes": ["PHONE_NUMBER"]
+        },
+        "action": {
+          "type": "MASK",
+          "mask": {
+            "strategy": "KEEP_SUFFIX",
+            "visibleCharacters": 4,
+            "maskCharacter": "*"
+          }
+        }
+      },
+      {
+        "id": "mask-customer-email",
+        "priority": 700,
+        "match": {
+          "sources": ["JOB_PAYLOAD", "JOB_RESULT"],
+          "fieldPaths": ["$.customer.email", "$.customers[*].email"],
+          "piiTypes": ["EMAIL_ADDRESS"]
+        },
+        "action": {
+          "type": "MASK",
+          "mask": {
+            "strategy": "EMAIL",
+            "localVisiblePrefix": 2,
+            "domainMode": "PRESERVE",
+            "maskCharacter": "*"
+          }
+        }
+      },
+      {
+        "id": "observe-other-pii",
+        "priority": 100,
+        "match": {
+          "piiTypes": ["EMAIL_ADDRESS", "PHONE_NUMBER", "NATIONAL_ID"]
+        },
+        "action": {
+          "type": "OBSERVE"
+        }
+      }
+    ]
+  }
+}
